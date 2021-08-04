@@ -1,16 +1,28 @@
-use std::net::{SocketAddrV4, Ipv4Addr, TcpListener};
-use std::io::{Read, Error};
+use std::io::Error;
+use std::net::SocketAddr;
+use std::convert::Infallible;
+use hyper::{Body, Request, Response, Server};
+use hyper::service::{make_service_fn, service_fn};
 
-fn main() -> Result<(), Error> {
-    let loopback = Ipv4Addr::new(127, 0, 0, 1);
-    let socket = SocketAddrV4::new(loopback, 0);
-    let listener = TcpListener::bind(socket)?;
-    let port = listener.local_addr()?;
-    println!("Listening on {}, access this port to end the program", port);
-    let (mut tcp_stream, addr) = listener.accept()?; //block  until requested
-    println!("Connection received! {:?} is sending data.", addr);
-    let mut input = String::new();
-    let _ = tcp_stream.read_to_string(&mut input)?;
-    println!("{:?} says {}", addr, input);
-    Ok(())
+
+#[tokio::main]
+async fn main() {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let service = make_service_fn(|_conn| async {
+        Ok::<_, Infallible>(service_fn(soft_serve))
+    });
+
+    let server = Server::bind(&addr).serve(service);
+
+    if let Err(e) = server.await {
+        eprintln!("server error: {}", e);
+    }
+}
+
+
+async fn soft_serve(_req: Request<Body>)
+-> Result<Response<Body>, Error> {
+    let static_ = hyper_staticfile::Static::new("static/");
+    let response_future = static_.serve(_req).await;
+    response_future
 }
